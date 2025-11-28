@@ -3,15 +3,12 @@
 #include "imgui/backends/imgui_impl_opengl3.h"
 #include <GLFW/glfw3.h>
 #include <stdio.h>
-// We need our SerialPort class to talk to the Il Matto
 #include "SerialPort.hpp" 
-// We need <string> for our status message and <stdio.h> for formatting commands
 #include <string> 
-#include <stdio.h> // For snprintf
+
 #define V_REF 3.3f
 #define ADC_MAX 1023
 
-// This makes the GUI look a bit more modern and clean.
 void StylePIDController() {
     ImGuiStyle& style = ImGui::GetStyle();
     style.Colors[ImGuiCol_Text]                 = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
@@ -34,75 +31,62 @@ void StylePIDController() {
     style.GrabRounding = 5.0f;
 }
 
-
 int main(int, char**) {
-    //Setup window
+    // Setup window
     glfwInit(); 
     if (GLFW_FALSE == glfwInit()) { 
         fprintf(stderr, "Failed to initialize GLFW\n");
         return -1;
     }
-    GLFWwindow* window = glfwCreateWindow(600, 400, "PID Controller GUI", NULL, NULL); // Create a 600x400 pixel window
+    GLFWwindow* window = glfwCreateWindow(600, 400, "PID Controller GUI", NULL, NULL); 
     if (window == NULL) {
         fprintf(stderr, "Failed to create GLFW window\n");
         glfwTerminate();
         return -1;
     }
     glfwMakeContextCurrent(window); 
-    glfwSwapInterval(1); // Enable vsync
+    glfwSwapInterval(1); 
 
-    //Setup ImGui context
+    // Setup ImGui context
     ImGui::CreateContext(); 
     ImGui_ImplGlfw_InitForOpenGL(window, true); 
     ImGui_ImplOpenGL3_Init("#version 130"); 
 
-    // Apply the custom style
     StylePIDController();
 
     // Application State Variables
-    // These variables store the "state" of our GUI.
-    
-    // Serial port object
     SerialPort serial;
-
-    // A buffer to hold the COM port name (e.g., "COM3")
     char com_port[32] = "COM3";
-    
-    // A message to show the connection status
     std::string status_message = "Disconnected";
 
-    // These hold the values for our PID sliders
-    // getting the initial values from your "config.hpp"
-    float kp = 0.5f;   // INITIAL_KP
-    float ki = 0.1f;   // INITIAL_KI
-    float kd = 0.05f;  // INITIAL_KD
-    float target_voltage = V_REF / 2.0f; // Start at 1.65V (midpoint of 3.3V)
-    int setpoint_adc = 512; // The 0-1023 value sent to the II Matto
+    float kp = 0.5f;   
+    float ki = 0.1f;   
+    float kd = 0.05f;  
+    float target_voltage = V_REF / 2.0f; 
+    int setpoint_adc = 512; 
 
-    int measured_value = 0; // Value read from ADC (0-1023)
-    int current_output = 0; // Current PWM output (0-255)
+    int measured_value = 0; 
+    int current_output = 0; 
 
-    // A buffer for formatting our serial commands
     char command_buffer[64];
 
+    // [ROBUST FIX] Persistent buffer to hold partial data across frames
+    std::string serial_accumulator = "";
 
-    // Main loop (This is where the GUI logic lives)
+    // Main loop
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents(); 
 
-        // Prepare new frame
         ImGui_ImplOpenGL3_NewFrame(); 
         ImGui_ImplGlfw_NewFrame(); 
         ImGui::NewFrame(); 
 
-        // Our GUI Window
-        // replaced "Hello, world!" with this (from when i first tested the gui)
         ImGui::Begin("PID Controller Dashboard"); 
 
         // Connection Section
-        ImGui::SetNextItemWidth(150); // Make the input box smaller
+        ImGui::SetNextItemWidth(150); 
         ImGui::InputText("COM Port", com_port, 32);
-        ImGui::SameLine(); // Place the next widget on the same line
+        ImGui::SameLine(); 
         
         if (ImGui::Button("Connect")) {
             if (serial.connect(com_port)) {
@@ -119,39 +103,25 @@ int main(int, char**) {
             status_message = "Disconnected";
         }
         
-        // Display the status message
         ImGui::Text("Status: %s", status_message.c_str());
-        
-        ImGui::Separator(); // A horizontal line
+        ImGui::Separator(); 
 
         // PID Control Section
         ImGui::Text("PID Gains");
         
-        // Kp Slider
-        // ImGui::SliderFloat returns 'true' if the user is dragging it.
         if (ImGui::SliderFloat("Kp", &kp, 0.0f, 5.0f, "%.3f")) {
-            // Format the command string (e.g., "p0.500\n")
             snprintf(command_buffer, sizeof(command_buffer), "p%f\n", kp);
-            // Send it if we are connected
-            if (serial.isConnected()) {
-                serial.write(command_buffer);
-            }
+            if (serial.isConnected()) serial.write(command_buffer);
         }
         
-        // Ki Slider
         if (ImGui::SliderFloat("Ki", &ki, 0.0f, 1.0f, "%.3f")) {
             snprintf(command_buffer, sizeof(command_buffer), "i%f\n", ki);
-            if (serial.isConnected()) {
-                serial.write(command_buffer);
-            }
+            if (serial.isConnected()) serial.write(command_buffer);
         }
         
-        // Kd Slider
         if (ImGui::SliderFloat("Kd", &kd, 0.0f, 1.0f, "%.3f")) {
             snprintf(command_buffer, sizeof(command_buffer), "d%f\n", kd);
-            if (serial.isConnected()) {
-                serial.write(command_buffer);
-            }
+            if (serial.isConnected()) serial.write(command_buffer);
         }
 
         ImGui::Separator();
@@ -159,58 +129,68 @@ int main(int, char**) {
         // Setpoint Control Section
         ImGui::Text("Setpoint (%0.1fV - %0.1fV)", 0.0f, V_REF);
         
-        // Use a float slider for the user to select voltage
         if (ImGui::SliderFloat("Target Voltage", &target_voltage, 0.0f, V_REF, "%.2f V")) {
-            // Clamp value (Safety check)
             if (target_voltage < 0.0f) target_voltage = 0.0f;
             if (target_voltage > V_REF) target_voltage = V_REF;
             
-            // Convert voltage (float) to 10-bit ADC setpoint (int)
-            // Conversion: Setpoint = (Target Voltage / V_REF) * ADC_MAX
             setpoint_adc = (int)((target_voltage / V_REF) * ADC_MAX);
             
-            // Format and send the command (e.g., "s512\n")
             snprintf(command_buffer, sizeof(command_buffer), "s%d\n", setpoint_adc);
-            if (serial.isConnected()) {
-                serial.write(command_buffer);
-            }
+            if (serial.isConnected()) serial.write(command_buffer);
         }
-        // Display the corresponding ADC value for reference
         ImGui::SameLine();
         ImGui::Text("(ADC: %d)", setpoint_adc);
 
-        // LIVE DATA READING AND PARSING
+        // ============================================================
+        // [ROBUST FIX] LIVE DATA READING AND PARSING
+        // ============================================================
         if (serial.isConnected()) {
             char read_buffer[64];
             int bytesRead = serial.read(read_buffer, sizeof(read_buffer) - 1);
 
             if (bytesRead > 0) {
                 read_buffer[bytesRead] = '\0';
-                int received_setpoint_temp;
                 
-                // Attempt to parse the packet: "D,<setpoint>,<measured>,<output>"
-                if (sscanf(read_buffer, "D,%u,%u,%u", 
-                           &received_setpoint_temp, &measured_value, &current_output) == 3) {
-                    // measured_value (0-1023) and current_output (0-255) are updated
+                // 1. Accumulate the new chunk of data
+                serial_accumulator += read_buffer;
+
+                // 2. Process all complete lines (indicated by '\n')
+                size_t newline_pos;
+                while ((newline_pos = serial_accumulator.find('\n')) != std::string::npos) {
+                    
+                    // Extract the single line
+                    std::string line = serial_accumulator.substr(0, newline_pos);
+                    
+                    // Optional: Remove '\r' if it exists (CRLF handling)
+                    if (!line.empty() && line.back() == '\r') {
+                        line.pop_back();
+                    }
+
+                    // Parse the line
+                    int temp_setpoint, temp_measured, temp_output;
+                    if (sscanf(line.c_str(), "D,%u,%u,%u", 
+                               &temp_setpoint, &temp_measured, &temp_output) == 3) {
+                        measured_value = temp_measured;
+                        current_output = temp_output;
+                    }
+
+                    // 3. Remove the processed line from the accumulator
+                    serial_accumulator.erase(0, newline_pos + 1);
                 }
             }
         }
+        // ============================================================
         
-        // LIVE DATA DISPLAY
-
         ImGui::Separator();
         ImGui::Text("LIVE DATA");
         
-        // Display the measured ADC value and its calculated voltage equivalent
         float measured_voltage = ((float)measured_value / ADC_MAX) * V_REF;
         ImGui::Text("Measured Output (Vout): %.2f V", measured_voltage);
         ImGui::Text("Measured ADC Value: %d / 1023", measured_value);
-        
         ImGui::Text("PWM Output (Duty Cycle): %d / 255", current_output);
 
-        ImGui::End(); // End the window
+        ImGui::End(); 
 
-        // Rendering
         ImGui::Render(); 
         glClearColor(0.45f, 0.55f, 0.60f, 1.00f); 
         glClear(GL_COLOR_BUFFER_BIT); 
@@ -218,8 +198,6 @@ int main(int, char**) {
         glfwSwapBuffers(window); 
     }
     
-    // Cleanup 
-    // Disconnect the serial port before we quit
     if (serial.isConnected()) {
         serial.disconnect();
     }
