@@ -1,0 +1,11 @@
+glfw/
+
+imgui/
+
+build/
+*.exe
+
+*.o
+
+*.ini
+
