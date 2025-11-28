@@ -3,7 +3,7 @@
 
 ADCReader::ADCReader() {
     // Initialize the ADC
-    ADMUX = 0; // setting to 0 to select channel 0 by default, AVcc as reference
+    ADMUX = _BV(REFS0); // setting to use AVcc as reference, channel 0 by default
     ADCSRA = _BV(ADEN) | _BV(ADPS2) | _BV(ADPS1); // Enable ADC, prescaler of 64
     DDRA &= ~_BV(PA0);
 }
