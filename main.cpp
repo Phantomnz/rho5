@@ -68,7 +68,7 @@ int main(int, char**) {
         ImGui::SameLine();
         if (ImGui::Button("Disconnect")) {
             serial.disconnect();
-            status_message = "Disconnected";
+            status_message = "Disconnected - to reconnect restart app";
         }
         ImGui::Text("Status: %s", status_message.c_str());
         ImGui::Separator(); 
