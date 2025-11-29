@@ -5,35 +5,40 @@
 #include <avr/io.h> // Required for LED control (PORTB)
 
 AVRSerial::AVRSerial() : m_bufferIndex(0) {
-	// Configure UART0 baud rate (assuming F_CPU is defined in makefile)
+    // Configure UART1 baud rate
     #define BAUD 9600
     #include <util/setbaud.h> // Helper to calculate UBRR values
-    UBRR0H = UBRRH_VALUE;
-    UBRR0L = UBRRL_VALUE;
     
-    // Enable RX and TX
-    UCSR0B = _BV(RXEN0) | _BV(TXEN0);
-    // 8-bit data, 1 stop bit
-    UCSR0C = _BV(UCSZ01) | _BV(UCSZ00);
+    // Note: We use UBRR1H/L for UART1
+    UBRR1H = UBRRH_VALUE;
+    UBRR1L = UBRRL_VALUE;
+    
+    // Enable RX and TX for UART1
+    // Changed RXEN0/TXEN0 -> RXEN1/TXEN1
+    UCSR1B = _BV(RXEN1) | _BV(TXEN1);
+    
+    // 8-bit data, 1 stop bit for UART1
+    // Changed UCSZ01/00 -> UCSZ11/10
+    UCSR1C = _BV(UCSZ11) | _BV(UCSZ10);
 }
 
 void AVRSerial::sendData(uint16_t setpoint, uint16_t measured, uint8_t output) {
     char buffer[64];
     // Format the string into a local buffer
-    // Note: We use a simpler format "D,..." to make parsing easier on the PC side
     snprintf(buffer, sizeof(buffer), "D,%u,%u,%u\r\n", setpoint, measured, output);
     
     // Send the buffer one char at a time
     for (int i = 0; buffer[i] != '\0'; i++) {
-        while (!(UCSR0A & _BV(UDRE0))); // Wait for TX buffer empty
-        UDR0 = buffer[i];               // Send char
+        // Wait for UART1 TX buffer empty (UDRE1)
+        while (!(UCSR1A & _BV(UDRE1))); 
+        UDR1 = buffer[i]; // Write to UDR1
     } 
 }
 
 void AVRSerial::processIncomingData(PIDController& pid, uint16_t& setpoint) {
-    // 1. Check if data is available (Non-blocking!), change to while to speed up processing
-    while(UCSR0A & _BV(RXC0)) {
-        char c = UDR0; // Read the character
+    // 1. Check if data is available on UART1 (RXC1)
+    while(UCSR1A & _BV(RXC1)) {
+        char c = UDR1; // Read from UDR1
 
         // 2. Check for end of line
         if (c == '\n' || c == '\r') {
@@ -51,19 +56,15 @@ void AVRSerial::processIncomingData(PIDController& pid, uint16_t& setpoint) {
 
 void AVRSerial::parseCommand(PIDController& pid, uint16_t& setpoint) {
     char type = m_buffer[0];
-    
-    // Pointer to the number part of the string (skip the first char 'p', 's', etc.)
     char* value_str = &m_buffer[1];
 
-    // Visual Debug: Toggle LED (PB7) whenever a valid command is parsed
+    // Visual Debug: Toggle LED (PB7)
     PORTB ^= _BV(PB7); 
 
     if (type == 's') {
-        // 'atoi' converts string to integer. much safer than sscanf.
         setpoint = atoi(value_str); 
     } 
     else if (type == 'p') {
-        // 'atof' converts string to float.
         double val = atof(value_str);
         pid.setGains(val, pid.getKi(), pid.getKd());
     }

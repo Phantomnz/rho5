@@ -1,26 +1,20 @@
 #include "ADCReader.hpp"
-#include <avr/io.h> // For ADC registers and bit definitions
+#include <avr/io.h> 
 
 ADCReader::ADCReader() {
-    // Initialize the ADC
-    ADMUX = _BV(REFS0); // setting to use AVcc as reference, channel 0 by default
-    ADCSRA = _BV(ADEN) | _BV(ADPS2) | _BV(ADPS1); // Enable ADC, prescaler of 64
-    DDRA &= ~_BV(PA0);
+    // 1. Select AVcc as reference
+    ADMUX = _BV(REFS0); 
+    // 2. Enable ADC, Prescaler /64
+    ADCSRA = _BV(ADEN) | _BV(ADPS2) | _BV(ADPS1); 
+    
+    // 3. Ensure PA2 is Input (Changed from PA0)
+    DDRA &= ~_BV(PA2); 
 }
 
 uint16_t ADCReader::readADC(uint8_t channel) {
-    
-    // Select the channel
-    // We clear the bottom 5 bits (MUX4:0) and set them to 'channel'.
-    // 0xE0 is 11100000 in binary.
+    // Mask bottom 5 bits and set channel
     ADMUX = (ADMUX & 0xE0) | (channel & 0x1F);
-
-    // Start the conversion
     ADCSRA |= _BV(ADSC);
-
-    // Wait for conversion to complete
     while (ADCSRA & _BV(ADSC));
-
-    // Return the ADC value
     return ADC;
 }

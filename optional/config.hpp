@@ -1,19 +1,14 @@
 #pragma once
+#define INITIAL_SETPOINT 0 
+#define INITIAL_KP 0.5 
+#define INITIAL_KI 0.1 
+#define INITIAL_KD 0.00 
 
-// INTIAL GAINS AND SETPOINT
-#define INITIAL_SETPOINT 512 // Midpoint for a 10-bit ADC (0-1023)
-#define INITIAL_KP 0.5 // Proportional gain
-#define INITIAL_KI 0.1 // Integral gain
-#define INITIAL_KD 0.05 // Derivative gain
+#define LOOP_TIME_MS 10 
+#define LOOP_TIME_S (LOOP_TIME_MS / 1000.0)
 
-// SYSTEM TIMING
-#define LOOP_TIME_MS 10 // Loop time in milliseconds
-#define LOOP_TIME_S (LOOP_TIME_MS / 1000.0) // Convert ms to seconds
-
-// HARDWARE AND LOGIC LIMITS
-#define PWM_MIN 0 // Minimum PWM value
-#define PWM_MAX 255 // Assuming an 8-bit PWM resolution
-#define PWM_BIAS 128 // Neutral PWM value for bidirectional control
-#define INTEGRAL_MAX 50.0 // To prevent integral windup
-#define INTEGRAL_MIN -50.0 // To prevent integral windup
-
+#define PWM_MIN 0 
+#define PWM_MAX 255 
+#define PWM_BIAS 0 
+#define INTEGRAL_MAX 1000.0 
+#define INTEGRAL_MIN -1000.0

@@ -2,51 +2,51 @@
 #include "PIDController.hpp"
 
 PIDController::PIDController(double kp, double ki, double kd)
-    : m_kp(kp), m_ki(ki), m_kd(kd), m_integral_sum(0.0), m_last_error(0.0) {} // Constructor to initialize PID gains
+    : m_kp(kp), m_ki(ki), m_kd(kd), m_integral_sum(0.0), m_last_error(0.0) {}
 
 void PIDController::setGains(double kp, double ki, double kd) {
-    m_kp = kp;
-    m_ki = ki;
+    m_kp = kp; 
+    m_ki = ki; 
     m_kd = kd;
-} // Method to set PID gains (what the gui will call)
+    // [CRITICAL FIX] Wipe memory when gains change to prevent "Shock"
+    reset(); 
+} 
 
 void PIDController::reset() {
-    m_integral_sum = 0.0;
+    m_integral_sum = 0.0; 
     m_last_error = 0.0;
-} // Method to reset the PID controller state
+} 
 
 uint8_t PIDController::update(uint16_t setpoint, uint16_t measured_value) {
-    double error = (double)setpoint - (double)measured_value;
+    // 1. Safety Reset on Zero
+    if (setpoint == 0) {
+        reset();
+        return 0;
+    }
 
-    // Proportional term (proportional to current error)
+    double error = (double)setpoint - (double)measured_value;
+    double feedforward = (double)setpoint / 4.0;
+
+    // 2. Proportional
     double p_out = m_kp * error;
 
-    // Integral term (accumulated error over time) with windup guarding, no overflow
+    // 3. Integral with Tighter Clamping (Speed up recovery)
     m_integral_sum += error * LOOP_TIME_S;
-    if (m_integral_sum > INTEGRAL_MAX) {
-        m_integral_sum = INTEGRAL_MAX;
-    } else if (m_integral_sum < INTEGRAL_MIN) {
-        m_integral_sum = INTEGRAL_MIN;
-    }
-    double i_out = m_ki * m_integral_sum; // Integral term
+    if (m_integral_sum > 500.0) m_integral_sum = 500.0;
+    else if (m_integral_sum < -500.0) m_integral_sum = -500.0;
+    
+    double i_out = m_ki * m_integral_sum; 
 
-    // Derivative term (based on error change rate)
+    // 4. Derivative
     double derivative = (error - m_last_error) / LOOP_TIME_S;
     double d_out = m_kd * derivative;
-    // Total output calculation
-    double output_correction = p_out + i_out + d_out;
 
-    double final_output = PWM_BIAS + output_correction;
-
-    // Save error for next derivative calculation
+    // 5. Final Output
+    double final_output = feedforward + p_out + i_out + d_out;
     m_last_error = error;
 
-    // Clamp output to PWM limits, no overflow
-    if (final_output > PWM_MAX) {
-        final_output = PWM_MAX;
-    } else if (final_output < PWM_MIN) {
-        final_output = PWM_MIN;
-    }
+    if (final_output > 255.0) return 255;
+    if (final_output < 0.0) return 0;
 
     return (uint8_t)final_output;
-} // Update method to compute the control output
+}
