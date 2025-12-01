@@ -1,46 +1,58 @@
 #include "config.hpp"
-#include "ADCReader.hpp"
-#include "PIDController.hpp"
 #include "AVRSerial.hpp"
 #include "PWMTimer.hpp"
 #include <util/delay.h>
 #include <avr/io.h>
 
-PWMTimer g_timer;
-ADCReader g_adc;
-PIDController g_pid(INITIAL_KP, INITIAL_KI, INITIAL_KD); 
-AVRSerial g_serial;
+PWMTimer g_timer; // Sets up PD4
+AVRSerial g_serial; // Sets up UART1
+
+// The Buffer
+#define WAVE_SIZE 256
+uint8_t g_waveform[WAVE_SIZE];
 
 int main(void) {
-    uint16_t current_setpoint = 0;
-    uint16_t measured_value = 0;
-    
-    // STRICTLY 8-BIT
-    uint8_t pwm_output = 0;
-    
-    int send_counter = 0;
+    // Initialize with a sawtooth pattern so we see something by default
+    for(int i=0; i<WAVE_SIZE; i++) {
+        g_waveform[i] = i; 
+    }
+
+    uint8_t play_index = 0;
 
     for(;;) {
-        g_serial.processIncomingData(g_pid, current_setpoint); 
+        // 1. CHECK FOR INCOMING DATA
+        // We look directly at the register because AVRSerial.cpp is designed for PID commands
+        if (UCSR1A & _BV(RXC1)) {
+            char cmd = UDR1;
+            
+            // If we receive the 'w' header, enter Download Mode
+            if (cmd == 'w') {
+                // Turn on LED to indicate receiving
+                DDRB |= _BV(PB7);
+                PORTB |= _BV(PB7);
 
-        measured_value = g_adc.readADC(2); // Keep PA2
-        
-        // Update PID
-        pwm_output = g_pid.update(current_setpoint, measured_value);
-        
-        // Apply to hardware
-        g_timer.setDutyCycle(pwm_output);
-
-        // Send Data
-        send_counter++;
-        if (send_counter >= 10) {
-            g_serial.sendData(current_setpoint, measured_value, pwm_output);
-            send_counter = 0;
+                for(int i=0; i<WAVE_SIZE; i++) {
+                    // Wait for byte
+                    while (!(UCSR1A & _BV(RXC1)));
+                    g_waveform[i] = UDR1;
+                }
+                
+                // Turn off LED
+                PORTB &= ~_BV(PB7);
+            }
         }
 
-        for (int i = 0; i < LOOP_TIME_MS; i++) {
-            _delay_ms(1);
-            g_serial.processIncomingData(g_pid, current_setpoint);
-        }
+        // 2. PLAYBACK
+        // Output the current sample
+        g_timer.setDutyCycle(g_waveform[play_index]);
+
+        // Move to next sample
+        play_index++; 
+        // uint8_t automatically wraps from 255 to 0, so no "if" needed!
+
+        // 3. SPEED CONTROL
+        // This delay determines the frequency of the wave.
+        // 256 samples * 10000us = ~2.56s period (~0.39Hz wave)
+        _delay_us(10000); 
     }
 }
